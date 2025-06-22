@@ -1,0 +1,8 @@
+- name: Configure EC2 with nginx, docker, docker-compose, and update port
+  hosts: web
+  become: yes
+  roles:
+    - nginx
+    - docker
+    - docker_compose
+    - change_nginx_port
