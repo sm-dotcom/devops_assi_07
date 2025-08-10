@@ -1,0 +1,76 @@
+name: Terraform Provision + Ansible Deploy + Destroy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./terraform-vpc-ec2-s3
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./terraform-vpc-ec2-s3
+        run: terraform plan
+
+      - name: Terraform Apply
+        working-directory: ./terraform-vpc-ec2-s3
+        run: terraform apply -auto-approve
+
+      - name: Save EC2 IP to file
+        working-directory: ./terraform-vpc-ec2-s3
+        run: |
+          terraform output -raw public_ip > ../ansible/inventory/hosts.ini
+          echo "[web]" | cat - ../ansible/inventory/hosts.ini > temp && mv temp ../ansible/inventory/hosts.ini
+
+  ansible-provision:
+    name: Ansible Provisioning
+    needs: terraform-apply
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Ansible
+        run: |
+          sudo apt update
+          sudo apt install -y ansible
+
+      - name: Run Ansible Playbook
+        working-directory: ./ansible
+        run: |
+          ansible-playbook -i inventory/hosts.ini playbook.yml
+
+  terraform-destroy:
+    name: Terraform Destroy
+    needs: ansible-provision
+    runs-on: ubuntu-latest
+    if: ${{ success() }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./terraform-vpc-ec2-s3
+        run: terraform init
+
+      - name: Terraform Destroy
+        working-directory: ./terraform-vpc-ec2-s3
+        run: terraform destroy -auto-approve
